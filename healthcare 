@@ -1,0 +1,108 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "toc_visible": true,
+      "authorship_tag": "ABX9TyPqZ+QrMx/zpmhis8YBPuiv",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/marankri/sakthimaran/blob/main/healthcare%20\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "id": "cCONgZ2KoWXy"
+      },
+      "outputs": [],
+      "source": [
+        "# ✅ Step 1: Install dependencies\n",
+        "!pip install -q langchain faiss-cpu langchain-google-genai biopython google-generativeai\n",
+        "!pip install -U langchain-community\n",
+        "\n",
+        "# ✅ Step 2: Import necessary libraries\n",
+        "import os\n",
+        "from langchain.vectorstores import FAISS\n",
+        "from langchain.embeddings import GoogleGenerativeAIEmbeddings\n",
+        "from langchain.text_splitter import RecursiveCharacterTextSplitter\n",
+        "from langchain.chains import RetrievalQA\n",
+        "from langchain_google_genai import ChatGoogleGenerativeAI\n",
+        "from Bio import Entrez\n",
+        "\n",
+        "# ✅ Step 3: API keys\n",
+        "os.environ[\"GOOGLE_API_KEY\"] = \"AIzaSyCW5HzSyVUTqh7VbS6nFUiJsoo2fKSjbwM\"  # Replace this with your Gemini API key\n",
+        "Entrez.email = \"kalyaniaanikkath@gmail.com\"  # Replace this with your email for PubMed API\n",
+        "\n",
+        "# ✅ Step 4: Fetch articles from PubMed\n",
+        "def fetch_pubmed_articles(query, max_results=5):\n",
+        "    handle = Entrez.esearch(db=\"pubmed\", term=query, retmax=max_results)\n",
+        "    record = Entrez.read(handle)\n",
+        "    ids = record[\"IdList\"]\n",
+        "    abstracts = []\n",
+        "    for pmid in ids:\n",
+        "        fetch = Entrez.efetch(db=\"pubmed\", id=pmid, rettype=\"abstract\", retmode=\"text\")\n",
+        "        abstract_text = fetch.read()\n",
+        "        abstracts.append(abstract_text)\n",
+        "    return abstracts\n",
+        "\n",
+        "# ✅ Step 5: Build vector store from articles\n",
+        "def build_vectorstore_from_articles(articles):\n",
+        "    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)\n",
+        "    texts = text_splitter.create_documents(articles)\n",
+        "    embeddings = GoogleGenerativeAIEmbeddings(model=\"models/embedding-001\")\n",
+        "    vectorstore = FAISS.from_documents(texts, embeddings)\n",
+        "    return vectorstore\n",
+        "\n",
+        "# ✅ Step 6: Create QA chain\n",
+        "def create_qa_chain(vectorstore):\n",
+        "    llm = ChatGoogleGenerativeAI(model=\"gemini-pro\", temperature=0.2)\n",
+        "    retriever = vectorstore.as_retriever()\n",
+        "    qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever, return_source_documents=True)\n",
+        "    return qa_chain\n",
+        "\n",
+        "# ✅ Step 7: Ask a health question\n",
+        "def ask_health_question(query, qa_chain):\n",
+        "    result = qa_chain(query)\n",
+        "    print(\"🩺 Answer:\\n\")\n",
+        "    print(result[\"result\"])\n",
+        "    print(\"\\n📚 Sources:\")\n",
+        "    for i, doc in enumerate(result[\"source_documents\"]):\n",
+        "        print(f\"\\nSource {i+1}:\\n{doc.page_content[:500]}...\")  # show a snippet\n",
+        "\n",
+        "# ✅ Step 8: Run the chatbot\n",
+        "if __name__ == \"__main__\":\n",
+        "    user_query = \"What are the latest treatments for type 2 diabetes?\"  # ← You can change the question\n",
+        "    print(\"🔍 Searching PubMed...\")\n",
+        "    articles = fetch_pubmed_articles(user_query, max_results=5)\n",
+        "\n",
+        "    print(\"📚 Building vector store...\")\n",
+        "    vectorstore = build_vectorstore_from_articles(articles)\n",
+        "\n",
+        "    print(\"🤖 Initializing Q&A chain with Gemini...\")\n",
+        "    qa_chain = create_qa_chain(vectorstore)\n",
+        "\n",
+        "    print(\"\\n💬 Asking your question...\\n\")\n",
+        "    ask_health_question(user_query, qa_chain)\n"
+      ]
+    }
+  ]
+}
